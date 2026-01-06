@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const dns = require('dns');
 const app = express();
 
-// ✅ Enable CORS (required for FCC browser-based tests)
+// ✅ CORS — required for FCC test runner
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST');
@@ -11,69 +11,61 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Parse JSON bodies
 app.use(bodyParser.json());
 
-// In-memory store
 let urls = [];
 let nextId = 1;
 
-// ✅ POST /api/shorturl
 app.post('/api/shorturl', (req, res) => {
-  const originalUrl = req.body.url;
+  const inputUrl = req.body.url; // keep original, including spaces
 
-  if (!originalUrl) {
+  // Must be string
+  if (typeof inputUrl !== 'string') {
+    return res.json({ error: 'invalid url' });
+  }
+
+  const trimmed = inputUrl.trim();
+  if (!trimmed) {
     return res.json({ error: 'invalid url' });
   }
 
   try {
-    // Parse and validate URL format
-    const parsed = new URL(originalUrl);
+    // Validate the *trimmed* version
+    const parsed = new URL(trimmed);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('Invalid protocol');
     }
 
-    // ✅ DNS lookup (as per FCC hint)
+    // DNS lookup on hostname
     dns.lookup(parsed.hostname, (err) => {
       if (err) {
         return res.json({ error: 'invalid url' });
       }
 
-      // Save and respond
+      // ✅ Store & return *original* inputUrl (with spaces, as FCC expects)
       const shortUrl = nextId++;
-      urls.push({ original_url: originalUrl, short_url: shortUrl });
-      res.json({
-        original_url: originalUrl,
-        short_url: shortUrl
-      });
+      urls.push({ original_url: inputUrl, short_url: shortUrl });
+      res.json({ original_url: inputUrl, short_url: shortUrl });
     });
   } catch (e) {
     res.json({ error: 'invalid url' });
   }
 });
 
-// ✅ GET /api/shorturl/:short_url → redirect
 app.get('/api/shorturl/:short_url', (req, res) => {
   const shortUrl = parseInt(req.params.short_url, 10);
   const entry = urls.find(u => u.short_url === shortUrl);
 
   if (entry) {
-    res.redirect(301, entry.original_url);
+    res.redirect(301, entry.original_url); // 301 = permanent redirect
   } else {
     res.status(404).json({ error: 'url not found' });
   }
 });
 
-// ✅ Root route (prevents "Not Found" on homepage)
+// Optional: root route
 app.get('/', (req, res) => {
-  res.status(200).send(`
-    <h1>URL Shortener Microservice</h1>
-    <p>POST { "url": "https://example.com" } to <code>/api/shorturl</code></p>
-  `);
+  res.status(200).send('<h1>URL Shortener Microservice</h1>');
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+app.listen(process.env.PORT || 3000);
